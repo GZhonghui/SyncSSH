@@ -1,6 +1,9 @@
 ############################################################
 # https://github.com/GZhonghui/SyncSSH, Author: GZhonghui
 
+# 这个文件是可选的
+# 配置也可以直接在 sync_to_ssh_server.py 中配置 更新的时候使用 git 回退配置的部分即可
+
 # 远程服务器配置
 ssh_server_host = "192.168.100.90"
 ssh_server_port = 22
