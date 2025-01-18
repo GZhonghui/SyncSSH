@@ -8,7 +8,7 @@
 # 远程服务器配置
 ssh_server_host = "192.168.100.90"
 ssh_server_port = 22
-ssh_server_platform = "windows" # 可选: linux, windows, macos
+ssh_server_platform = "windows" # 可选: linux, windows (cmd), macos
 ssh_server_username = "admin"
 ssh_server_password = "" # 密码在程序执行时手动输入
 
@@ -70,6 +70,14 @@ def mkdir_command(remote_dir: str) -> str:
         "windows": f'if not exist "{remote_dir}" mkdir "{remote_dir}"',
         "linux": f"mkdir -p '{remote_dir}'",
         "macos": f"mkdir -p '{remote_dir}'"
+    }[ssh_server_platform]
+
+# 删除远程文件的命令
+def delete_file_command(remote_file_path: str) -> str:
+    return {
+        "windows": f'if exist "{remote_file_path}" del "{remote_file_path}"',
+        "linux": f"rm -f '{remote_file_path}'",
+        "macos": f"rm -f '{remote_file_path}'"
     }[ssh_server_platform]
 
 # 日志输出
@@ -253,6 +261,25 @@ def upload_file_to_remote(local_path: str, remote_path: str | None, remote_dir: 
     except subprocess.CalledProcessError as e:
         log(f"file upload failed: {e.stderr}")
         return False
+    
+# 删除远程文件
+def delete_remote_file(remote_file_path: str) -> bool:
+    delete_file_command_value = delete_file_command(remote_file_path)
+    ssh_command = [
+        "sshpass",
+        "-p", ssh_server_password,
+        "ssh",
+        "-p", str(ssh_server_port),
+        f"{ssh_server_username}@{ssh_server_host}",
+        delete_file_command_value
+    ]
+    try:
+        result = subprocess.run(ssh_command, check=True, capture_output=True, text=True)
+        log(f"file delete success: {remote_file_path}")
+        return True
+    except subprocess.CalledProcessError as e:
+        log(f"file delete failed: {e.stderr}")
+        return False
 
 # 文件修改
 def on_file_modified(file_path: str):
@@ -267,7 +294,9 @@ def on_file_created(file_path: str):
 # 文件删除
 def on_file_deleted(file_path: str):
     log(f"file deleted: {file_path}")
-    # TODO: 删除远程文件
+    remote_info = convert_local_file_path_to_remote(file_path)
+    if remote_info:
+        delete_remote_file(remote_info["remote_file_path"])
 
 # 检查文件是否需要处理 使用绝对路径
 def should_process_file(file_path: str) -> bool:
@@ -330,6 +359,8 @@ def start_watch_files():
 
 # 开始上传所有文件 初始化时执行
 def start_upload_all_files():
+    file_count = 0
+
     # 遍历本地根目录下的所有文件
     local_root = get_local_root_path()
     for root, dirs, files in os.walk(local_root):
@@ -342,7 +373,8 @@ def start_upload_all_files():
             if should_process_file(file_path):
                 log(f"init: upload file {file_path}")
                 on_file_created(file_path)
-    log("init: upload all files success")
+                file_count += 1
+    log(f"init: upload all files success, {file_count} files")
 
 def main():
     log("start sync to ssh server")
@@ -350,9 +382,10 @@ def main():
     log(f"sync from: {get_local_root_path()}")
     log(f"sync to: {get_remote_root_path()}")
 
-    # 同步文件
+    # 注意: 在同步之前 不会删除 host 原有的文件 如需要删除请手动执行
+    # 开始同步文件
     start_upload_all_files()
-    # BUG: 在初始化完成之前 不会监听文件变化
+    # BUG: 在初始化完成之前 不会监听文件变化 暂时不打算修正 使用的时候注意
     start_watch_files()
 
 if __name__ == "__main__":
