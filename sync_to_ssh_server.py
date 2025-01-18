@@ -79,10 +79,6 @@ def log(*args, **kwargs):
 
 # 检查配置
 def check_config() -> bool:
-    # 检查密码
-    # 如果不在一开始就检查密码的话 可能会因为密码错误太多次 导致账户被锁定
-    # TODO
-
     # 检查平台
     if ssh_server_platform not in supported_platforms:
         log(f"unsupported platform: {ssh_server_platform}")
@@ -93,6 +89,34 @@ def check_config() -> bool:
         log("watchdog not found, exiting...")
         return False
 
+    return True
+
+# 检查密码
+def check_ssh_password() -> bool:
+    # 检查密码 如果不在一开始就检查密码的话 可能会因为密码错误太多次 导致账户被锁定
+    try:
+        # cd 命令在所有平台都可用
+        result = subprocess.run(
+            [
+                "sshpass",
+                "-p", ssh_server_password,
+                "ssh",
+                "-p", str(ssh_server_port),
+                f"{ssh_server_username}@{ssh_server_host}", "cd"
+            ],
+            capture_output=True,
+            text=True, # 参数作用: 将输出和错误信息转换为字符串
+            timeout=5
+        )
+        if result.returncode != 0:
+            log("ssh connection failed, please check password, returncode:", result.returncode)
+            return False
+    except subprocess.TimeoutExpired:
+        log("ssh connection timeout, make sure host and password are correct")
+        return False
+    except Exception as e:
+        log(f"ssh connection error: {str(e)}")
+        return False
     return True
 
 # 获取本地根路径
@@ -335,7 +359,5 @@ if __name__ == "__main__":
     # 检查配置
     if check_config():
         ssh_server_password = getpass.getpass("input password: ")
-        main()
-    else:
-        log("check config failed, exiting...")
-        exit(0)
+        if check_ssh_password():
+            main()
